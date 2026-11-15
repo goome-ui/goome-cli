@@ -1,0 +1,24 @@
+name: release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  upload:
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: goome.py says the right version
+        run: grep -q "^__version__ = \"${TAG#v}\"" goome.py || { echo "goome.py isnt ${TAG#v}"; exit 1; }
+      - name: upload
+        run: |
+          gh release view "$TAG" > /dev/null 2>&1 || gh release create "$TAG" --verify-tag --title "goome-cli ${TAG#v}" --notes "goome-cli ${TAG#v}"
+          gh release upload "$TAG" goome.py --clobber
