@@ -1,0 +1,106 @@
+name: ci
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            python: "3.13"
+          - os: ubuntu-22.04
+            python: "3.8"
+          - os: windows-latest
+            python: "3.13"
+          - os: macos-latest
+            python: "3.13"
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - name: tests
+        run: python -m unittest discover -s tests -v
+      - name: pip install
+        run: |
+          python -m venv "$RUNNER_TEMP/v"
+          if [ "$RUNNER_OS" = Windows ]; then py="$RUNNER_TEMP/v/Scripts/python"; else py="$RUNNER_TEMP/v/bin/python"; fi
+          "$py" -m pip install -q .
+          cd "$RUNNER_TEMP"
+          "$py" -m goome_cli --version
+          "$py" -m goome_cli list
+
+  templates:
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        lang: [c, csharp, python, java, godot]
+    runs-on: ubuntu-latest
+    env:
+      GOOME_BACKEND: test
+      GODOT: 4.7.2-stable
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - uses: actions/setup-dotnet@v4
+        if: matrix.lang == 'csharp'
+        with:
+          dotnet-version: 8.0.x
+      - uses: actions/setup-java@v4
+        if: matrix.lang == 'java'
+        with:
+          distribution: temurin
+          java-version: 25
+      - name: get godot
+        if: matrix.lang == 'godot'
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/godot.zip" "https://github.com/godotengine/godot/releases/download/$GODOT/Godot_v${GODOT}_linux.x86_64.zip"
+          unzip -q "$RUNNER_TEMP/godot.zip" -d "$RUNNER_TEMP/godot"
+          echo "GD=$RUNNER_TEMP/godot/Godot_v${GODOT}_linux.x86_64" >> "$GITHUB_ENV"
+      - name: make, build and run every template
+        run: |
+          cli="$PWD/goome.py"
+          cd "$RUNNER_TEMP"
+          for t in app overlay mod-menu hud; do
+            name="ci $t test"
+            python "$cli" new "$name" --lang ${{ matrix.lang }} --template $t --dir "p-$t"
+            cd "p-$t"
+            script="screen 1280x720 1; 2 hotkey alt+m; 3 click 60,28; end 6"
+            case ${{ matrix.lang }} in
+            c)
+              cc -O2 -std=c99 -o ci-$t-test main.c goome.c
+              out=$(GOOME_TEST_SCRIPT="$script" ./ci-$t-test) ;;
+            csharp)
+              dotnet build -c Release -nologo -v q
+              out=$(GOOME_TEST_SCRIPT="$script" dotnet run -c Release --no-build) ;;
+            python)
+              python -m venv .venv
+              .venv/bin/pip install -q -r requirements.txt
+              out=$(GOOME_TEST_SCRIPT="$script" .venv/bin/python main.py) ;;
+            java)
+              ./gradlew -q installDist
+              out=$(GOOME_TEST_SCRIPT="$script" build/install/ci-$t-test/bin/ci-$t-test) ;;
+            godot)
+              ./get-goome.sh
+              "$GD" --headless --path . --import > /dev/null 2>&1 || true
+              out=$("$GD" --headless --path . --quit-after 120 2>&1)
+              ! echo "$out" | grep -q "SCRIPT ERROR\|^ERROR"
+              grep -q 'config/name="Ci ' project.godot ;;
+            esac
+            echo "$out"
+            if [ $t = app ] && [ ${{ matrix.lang }} != godot ]; then echo "$out" | grep -q "overlay mode"; fi
+            cd ..
+          done
