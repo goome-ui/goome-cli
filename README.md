@@ -5,7 +5,7 @@
 <h1 align="center">🪄 goome-cli 🪄</h1>
 
 <p align="center">
-<b><code>goome new</code> makes you a new goome project, already named and ready to build. C, C#, Python, Java or Godot.</b>
+<b><code>goome new</code> makes you a new goome project, already named and ready to build. C, C#, Python, Java, Godot, Rust, Node, Go, Zig or Lua.</b>
 </p>
 
 <p align="center">
@@ -49,6 +49,7 @@ goome --version
 ```
 
 <p align="center">
+goome-cli isnt on PyPI. <code>pip install goome</code> gets you <a href="https://github.com/goome-ui/python-goome">python-goome</a>, not this.<br> <br>
 Or skip installing and just download the file, it runs the same way:
 </p>
 
@@ -59,7 +60,7 @@ python goome.py new my-app --lang c
 
 <p align="center">
 On windows thats <code>irm https://raw.githubusercontent.com/goome-ui/goome-cli/main/goome.py -OutFile goome.py</code> in powershell, then <code>python goome.py new ...</code>.<br> <br>
-For a certain version put the tag after an <code>@</code>, like <code>pip install git+https://github.com/goome-ui/goome-cli@v0.5.0</code>.
+For a certain version put the tag after an <code>@</code>, like <code>pip install git+https://github.com/goome-ui/goome-cli@v0.5.1</code>.
 </p>
 </details>
 
@@ -69,7 +70,7 @@ For a certain version put the tag after an <code>@</code>, like <code>pip instal
 <br>
 
 ```sh
-goome new <name> --lang c|csharp|python|java|godot [--template app|overlay|mod-menu|hud]
+goome new <name> --lang c|csharp|python|java|godot|rust|node|go|zig|lua [--template app|overlay|mod-menu|hud]
 goome list
 goome --version
 ```
@@ -102,7 +103,12 @@ Each one is a normal GitHub template repo too, so <b>Use this template</b> works
 <a href="https://github.com/goome-ui/goome-app-template-csharp">goome-app-template-csharp</a><br>
 <a href="https://github.com/goome-ui/goome-app-template-python">goome-app-template-python</a><br>
 <a href="https://github.com/goome-ui/goome-app-template-java">goome-app-template-java</a><br>
-<a href="https://github.com/goome-ui/goome-app-template-godot">goome-app-template-godot</a><br> <br>
+<a href="https://github.com/goome-ui/goome-app-template-godot">goome-app-template-godot</a><br>
+<a href="https://github.com/goome-ui/goome-app-template-rust">goome-app-template-rust</a><br>
+<a href="https://github.com/goome-ui/goome-app-template-node">goome-app-template-node</a><br>
+<a href="https://github.com/goome-ui/goome-app-template-go">goome-app-template-go</a><br>
+<a href="https://github.com/goome-ui/goome-app-template-zig">goome-app-template-zig</a><br>
+<a href="https://github.com/goome-ui/goome-app-template-lua">goome-app-template-lua</a><br> <br>
 The other starting points live in <code>variants/</code> in each one, the cli copies the one you picked over the app.
 </p>
 </details>

@@ -106,8 +106,38 @@ class Cli(unittest.TestCase):
         out = io.StringIO()
         with redirect_stdout(out):
             goome.main(["list"])
-        for w in ("c", "csharp", "python", "java", "godot", "app", "overlay", "mod-menu", "hud"):
+        for w in ("c", "csharp", "python", "java", "godot", "rust", "node", "go", "zig", "lua", "app", "overlay", "mod-menu", "hud"):
             self.assertIn(w, out.getvalue())
+
+    def test_version(self):
+        out = io.StringIO()
+        with redirect_stdout(out), self.assertRaises(SystemExit):
+            goome.main(["--version"])
+        self.assertEqual(out.getvalue().strip(), "goome " + goome.__version__)
+        self.assertRegex(goome.__version__, r"^\d+\.\d+\.\d+$")
+
+    def lang(self, lang, step):
+        dest = os.path.join(self.dir, "p-" + lang)
+        rc, out = self.new("cool hud", "--lang", lang, "--dir", dest)
+        self.assertEqual(rc, 0)
+        self.assertIn("(%s, app template" % lang, out)
+        self.assertIn("  " + step + "\n", out)
+        self.assertIn(step, self.read("p-" + lang, "README.md"))
+
+    def test_rust(self):
+        self.lang("rust", "cargo run")
+
+    def test_node(self):
+        self.lang("node", "node main.js")
+
+    def test_go(self):
+        self.lang("go", "go run .")
+
+    def test_zig(self):
+        self.lang("zig", "zig build run")
+
+    def test_lua(self):
+        self.lang("lua", "lua main.lua")
 
 
 if __name__ == "__main__":
