@@ -1,9 +1,12 @@
 #!/usr/bin/env python3
 import argparse
+import functools
+import http.server
 import io
 import os
 import re
 import shutil
+import subprocess
 import sys
 import tarfile
 import tempfile
@@ -233,8 +236,195 @@ def cmd_list(a):
     return 0
 
 
+CLANGS = ["clang"] + ["clang-%d" % v for v in range(25, 13, -1)]
+LLVM_DIRS = ["/opt/homebrew/opt/llvm/bin", "/usr/local/opt/llvm/bin", "/usr/lib/llvm/bin", "C:\\Program Files\\LLVM\\bin"]
+INSTALL_HINT = (
+    "install clang and lld with the webassembly target:\n"
+    "  debian/ubuntu  sudo apt install clang lld\n"
+    "  fedora         sudo dnf install clang lld\n"
+    "  arch           sudo pacman -S clang lld\n"
+    "  mac            brew install llvm lld   (apples own clang cant do wasm)\n"
+    "  windows        winget install LLVM.LLVM\n"
+    "or point CLANG and WASM_LD at ones you have"
+)
+
+
+def which_in(name, extra=()):
+    found = shutil.which(name)
+    if found:
+        return found
+    for d in extra:
+        for ext in ("", ".exe"):
+            p = os.path.join(d, name + ext)
+            if os.path.isfile(p) and os.access(p, os.X_OK):
+                return p
+    return None
+
+
+def can_wasm(clang):
+    try:
+        r = subprocess.run([clang, "--print-targets"], capture_output=True, text=True, timeout=30)
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return "wasm32" in r.stdout
+
+
+def find_tools():
+    want = os.environ.get("CLANG")
+    names = [want] if want else CLANGS
+    clang = None
+    seen = False
+    for n in names:
+        c = which_in(n, LLVM_DIRS)
+        if not c:
+            continue
+        seen = True
+        if can_wasm(c):
+            clang = c
+            break
+    if not clang:
+        if seen:
+            raise SystemExit("goome: found clang but it cant target wasm32.\n" + INSTALL_HINT)
+        raise SystemExit("goome: no clang found, building for the web needs one.\n" + INSTALL_HINT)
+    ld = os.environ.get("WASM_LD")
+    if ld and not os.path.isfile(ld):
+        ld = which_in(ld, LLVM_DIRS)
+    if not ld:
+        beside = os.path.join(os.path.dirname(os.path.realpath(clang)), "wasm-ld")
+        ld = beside if os.path.isfile(beside) else which_in("wasm-ld", LLVM_DIRS)
+    if not ld:
+        raise SystemExit("goome: no wasm-ld found, its in the lld package.\n" + INSTALL_HINT)
+    return clang, ld
+
+
+def is_goome_tree(d):
+    return os.path.isfile(os.path.join(d, "wasm", "web-build.sh")) and os.path.isfile(os.path.join(d, "src", "goome.c"))
+
+
+def cache_dir():
+    base = os.environ.get("XDG_CACHE_HOME") or os.path.join(os.path.expanduser("~"), ".cache")
+    return os.path.join(base, "goome")
+
+
+def find_source(app, given, ref):
+    if given:
+        if not is_goome_tree(given):
+            raise SystemExit("goome: %s isnt a c-goome checkout (no wasm/web-build.sh), use a newer one" % given)
+        return given
+    env = os.environ.get("GOOME_SRC")
+    if env:
+        if not is_goome_tree(env):
+            raise SystemExit("goome: GOOME_SRC=%s isnt a c-goome checkout with wasm/web-build.sh" % env)
+        return env
+    here = os.path.dirname(os.path.abspath(app))
+    for start in (here, os.getcwd()):
+        d = start
+        while True:
+            for cand in (d, os.path.join(d, "c-goome"), os.path.join(d, "goome"), os.path.join(d, "vendor", "c-goome")):
+                if is_goome_tree(cand):
+                    return cand
+            up = os.path.dirname(d)
+            if up == d:
+                break
+            d = up
+    tries = [ref] if ref else ["refs/tags/v" + __version__, "refs/heads/main"]
+    last = None
+    for i, r in enumerate(tries):
+        dest = os.path.join(cache_dir(), "c-goome-" + r.replace("/", "-"))
+        if is_goome_tree(dest) and r.startswith("refs/tags/"):
+            return dest
+        url = "https://codeload.github.com/%s/c-goome/tar.gz/%s" % (ORG, r)
+        try:
+            data = fetch(url)
+        except urllib.error.HTTPError as e:
+            if e.code != 404:
+                raise SystemExit("goome: couldnt download %s (%s)" % (url, e))
+            continue
+        except urllib.error.URLError as e:
+            raise SystemExit("goome: couldnt reach github: %s" % e.reason)
+        shutil.rmtree(dest, ignore_errors=True)
+        os.makedirs(dest)
+        safe_extract(data, dest)
+        if is_goome_tree(dest):
+            return dest
+        last = r
+        shutil.rmtree(dest, ignore_errors=True)
+    if last:
+        raise SystemExit("goome: %s of c-goome has no web build yet. use --ref dev or --goome <checkout of c-goome>" % last.split("/")[-1])
+    raise SystemExit("goome: couldnt find c-goome %s, use --goome <checkout of c-goome>" % (ref or "v" + __version__))
+
+
+def find_app(path):
+    if path:
+        if not os.path.isfile(path):
+            raise SystemExit("goome: no such file: %s" % path)
+        return path
+    for c in ("main.c", os.path.join("src", "main.c"), "app.c", os.path.join("src", "app.c")):
+        if os.path.isfile(c):
+            return c
+    raise SystemExit("goome: which file? give it as goome build --web app.c (looked for main.c, src/main.c, app.c)")
+
+
+def cmd_build(a):
+    if not a.web:
+        raise SystemExit("goome: build needs a target, only --web so far")
+    app = find_app(a.file)
+    clang, ld = find_tools()
+    src = find_source(app, a.goome, a.ref)
+    bash = shutil.which("bash")
+    if not bash:
+        raise SystemExit("goome: building for the web needs bash (git bash or wsl on windows)")
+    out = os.path.abspath(a.out)
+    env = dict(os.environ, CLANG=clang, WASM_LD=ld)
+    cmd = [bash, os.path.join(src, "wasm", "web-build.sh"), app, out] + list(a.more)
+    r = subprocess.run(cmd, env=env, stderr=subprocess.PIPE, stdout=subprocess.PIPE, text=True)
+    if r.returncode:
+        msg = r.stderr.strip() or r.stdout.strip() or "the build failed"
+        if msg.startswith("web-build: "):
+            msg = msg[len("web-build: "):]
+        raise SystemExit("goome: " + msg)
+    print(r.stdout.strip())
+    print("")
+    print("serve it with: goome serve %s" % a.out)
+    return 0
+
+
+class Quiet(http.server.SimpleHTTPRequestHandler):
+    extensions_map = dict(http.server.SimpleHTTPRequestHandler.extensions_map, **{".wasm": "application/wasm", ".js": "text/javascript"})
+
+    def log_message(self, fmt, *args):
+        pass
+
+    def end_headers(self):
+        self.send_header("Cache-Control", "no-store")
+        super().end_headers()
+
+
+def make_server(folder, bind, port):
+    if not os.path.isfile(os.path.join(folder, "index.html")):
+        raise SystemExit("goome: no index.html in %s, build it first with goome build --web" % folder)
+    handler = functools.partial(Quiet, directory=os.path.abspath(folder))
+    try:
+        return http.server.ThreadingHTTPServer((bind, port), handler)
+    except OSError as e:
+        raise SystemExit("goome: cant listen on %s:%d (%s)" % (bind, port, e.strerror))
+
+
+def cmd_serve(a):
+    srv = make_server(a.dir, a.bind, a.port)
+    print("serving %s at http://%s:%d/  (ctrl+c to stop)" % (a.dir, "localhost" if a.bind in ("127.0.0.1", "0.0.0.0") else a.bind, srv.server_address[1]))
+    sys.stdout.flush()
+    try:
+        srv.serve_forever()
+    except KeyboardInterrupt:
+        print("")
+    finally:
+        srv.server_close()
+    return 0
+
+
 def main(argv=None):
-    p = argparse.ArgumentParser(prog="goome", description="makes a new goome project from a template")
+    p = argparse.ArgumentParser(prog="goome", description="makes a new goome project from a template, builds apps for the web")
     p.add_argument("--version", action="version", version="goome " + __version__)
     sub = p.add_subparsers(dest="cmd")
     n = sub.add_parser("new", help="make a new project")
@@ -244,10 +434,25 @@ def main(argv=None):
     n.add_argument("--dir", help="folder to make it in, the name by default")
     n.add_argument("--ref", help="branch, tag or commit of the template repo")
     n.add_argument("--from", dest="source", help="use a local template folder or .tar.gz instead of downloading")
+    b = sub.add_parser("build", help="build your app, --web makes a folder you can host")
+    b.add_argument("file", nargs="?", help="the app, main.c by default")
+    b.add_argument("--web", action="store_true", help="compile it to webassembly with a page around it")
+    b.add_argument("--out", default="web", help="folder to put it in, web by default")
+    b.add_argument("--goome", help="a c-goome checkout to build with instead of downloading one")
+    b.add_argument("--ref", help="branch or tag of c-goome to download")
+    b.add_argument("--more", nargs="*", default=[], help="more .c files that belong to the app")
+    sv = sub.add_parser("serve", help="host a folder you built with --web on localhost")
+    sv.add_argument("dir", nargs="?", default="web")
+    sv.add_argument("--port", type=int, default=8000)
+    sv.add_argument("--bind", default="127.0.0.1")
     sub.add_parser("list", help="show the languages and templates")
     a = p.parse_args(argv)
     if a.cmd == "new":
         return cmd_new(a)
+    if a.cmd == "build":
+        return cmd_build(a)
+    if a.cmd == "serve":
+        return cmd_serve(a)
     if a.cmd == "list":
         return cmd_list(a)
     p.print_help()
