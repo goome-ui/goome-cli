@@ -45,7 +45,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        lang: [c, csharp, python, java, godot]
+        lang: [c, csharp, python, java, godot, rust, node, go, zig, lua]
     runs-on: ubuntu-latest
     env:
       GOOME_BACKEND: test
@@ -64,6 +64,27 @@ jobs:
         with:
           distribution: temurin
           java-version: 25
+      - uses: dtolnay/rust-toolchain@stable
+        if: matrix.lang == 'rust'
+      - uses: actions/setup-node@v4
+        if: matrix.lang == 'node'
+        with:
+          node-version: 22
+      - uses: actions/setup-go@v5
+        if: matrix.lang == 'go'
+        with:
+          go-version: stable
+          cache: false
+      - uses: mlugg/setup-zig@v2
+        if: matrix.lang == 'zig'
+        with:
+          version: 0.15.2
+      - uses: leafo/gh-actions-lua@v13
+        if: matrix.lang == 'lua'
+        with:
+          luaVersion: "5.4"
+      - uses: leafo/gh-actions-luarocks@v6
+        if: matrix.lang == 'lua'
       - name: get godot
         if: matrix.lang == 'godot'
         run: |
@@ -99,6 +120,21 @@ jobs:
               out=$("$GD" --headless --path . --quit-after 120 2>&1)
               ! echo "$out" | grep -q "SCRIPT ERROR\|^ERROR"
               grep -q 'config/name="Ci ' project.godot ;;
+            rust)
+              cargo build -q
+              out=$(GOOME_TEST_SCRIPT="$script" cargo run -q) ;;
+            node)
+              npm install --no-audit --no-fund
+              out=$(GOOME_TEST_SCRIPT="$script" node main.js) ;;
+            go)
+              go build -o app .
+              out=$(GOOME_TEST_SCRIPT="$script" ./app) ;;
+            zig)
+              zig build
+              out=$(GOOME_TEST_SCRIPT="$script" ./zig-out/bin/ci-$t-test) ;;
+            lua)
+              luarocks install goome-*.rockspec
+              out=$(GOOME_TEST_SCRIPT="$script" lua main.lua) ;;
             esac
             echo "$out"
             if [ $t = app ] && [ ${{ matrix.lang }} != godot ]; then echo "$out" | grep -q "overlay mode"; fi
