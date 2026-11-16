@@ -93,6 +93,28 @@ It wont touch a folder that already has stuff in it.
 </details>
 
 <details>
+<summary align="center"><b>🌐 Run It In The Browser 🌐</b></summary>
+
+<br>
+
+```sh
+goome build --web [file.c] [--out web] [--goome DIR] [--ref REF] [--more a.c b.c]
+goome serve [web] [--port 8000] [--bind 127.0.0.1]
+```
+
+<p align="center">
+Compiles a goome C app to webassembly and puts a page around it. You get <code>index.html</code>, <code>goome.js</code> and <code>goome.wasm</code> in the out folder, drop it on any static host.<br> <br>
+<b>file.c</b> - your app, <code>main.c</code> or <code>src/main.c</code> if you leave it out<br>
+<b>--out</b> - where it goes, <code>web</code> if you leave it out<br>
+<b>--goome</b> - a c-goome checkout to build with, otherwise it looks next to your app and then downloads one<br>
+<b>--ref</b> - a branch or tag of c-goome to download<br>
+<b>--more</b> - more .c files that belong to the app<br> <br>
+You need <code>clang</code> with the wasm32 target and <code>wasm-ld</code> (<code>sudo apt install clang lld</code>, <code>brew install llvm lld</code>, <code>winget install LLVM.LLVM</code>) and bash. It says so if they are missing, <code>CLANG</code> and <code>WASM_LD</code> point it at ones in odd places.<br> <br>
+Only apps work, a normal window, since the page is the window. Overlays and mod menus get an error that says why, and the app has no title bar of its own in the page. The loop in <code>main</code> has to be split in <code>goome_web_init</code> and <code>goome_web_frame</code>, a browser cant wait inside a loop. The details and the two examples are in <a href="https://github.com/goome-ui/c-goome/tree/dev/wasm/web">wasm/web</a>.
+</p>
+</details>
+
+<details>
 <summary align="center"><b>🧩 The Templates 🧩</b></summary>
 
 <br>
