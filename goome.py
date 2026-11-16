@@ -10,7 +10,7 @@ import tempfile
 import urllib.error
 import urllib.request
 
-__version__ = "0.5.0"
+__version__ = "0.5.1"
 
 ORG = "goome-ui"
 LANGS = {
@@ -19,6 +19,11 @@ LANGS = {
     "python": "Python 3.8 or newer",
     "java": "Java 22 or newer, Gradle",
     "godot": "Godot 4.4 or newer, GDScript",
+    "rust": "Rust 1.77 or newer, cargo",
+    "node": "Node 18 or newer, npm",
+    "go": "Go 1.23 or newer, cgo with a C compiler",
+    "zig": "Zig 0.15.2",
+    "lua": "Lua 5.4 or LuaJIT, LuaRocks and a C compiler",
 }
 TEMPLATES = {
     "app": "a normal window, with a toggle that turns it into an overlay",
@@ -55,6 +60,12 @@ def next_steps(lang, folder, kebab):
                    "pip install -r requirements.txt", "python main.py"],
         "java": [cd, "./gradlew run   (gradlew.bat run on windows)"],
         "godot": [cd, "./get-goome.sh   (or get-goome.ps1 on windows)", "godot -e --path ."],
+        "rust": [cd, "cargo run"],
+        "node": [cd, "npm install", "node main.js"],
+        "go": [cd, "go run ."],
+        "zig": [cd, "zig build run"],
+        "lua": [cd, "luarocks install --local goome-0.5.0-1.rockspec",
+                "eval \"$(luarocks path)\"   (on windows run luarocks path and do what it prints)", "lua main.lua"],
     }
     return steps[lang]
 
@@ -106,7 +117,7 @@ def safe_extract(data, dest):
 
 
 def copy_local(src, dest):
-    skip = {".git", ".venv", "build", "bin", "obj", ".gradle", ".godot", "__pycache__"}
+    skip = {".git", ".venv", "build", "bin", "obj", ".gradle", ".godot", "__pycache__", "target", "node_modules", ".zig-cache", "zig-out", "lua_modules"}
     for top, dirs, files in os.walk(src):
         dirs[:] = [d for d in dirs if d not in skip]
         rel = os.path.relpath(top, src)
