@@ -60,7 +60,7 @@ python goome.py new my-app --lang c
 
 <p align="center">
 On windows thats <code>irm https://raw.githubusercontent.com/goome-ui/goome-cli/main/goome.py -OutFile goome.py</code> in powershell, then <code>python goome.py new ...</code>.<br> <br>
-For a certain version put the tag after an <code>@</code>, like <code>pip install git+https://github.com/goome-ui/goome-cli@v0.5.1</code>.
+For a certain version put the tag after an <code>@</code>, like <code>pip install git+https://github.com/goome-ui/goome-cli@v0.5.2</code>.
 </p>
 </details>
 
