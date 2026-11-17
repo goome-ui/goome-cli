@@ -61,7 +61,7 @@ python goome.py new my-app --lang c
 
 <p align="center">
 On windows thats <code>irm https://raw.githubusercontent.com/goome-ui/goome-cli/main/goome.py -OutFile goome.py</code> in powershell, then <code>python goome.py new ...</code>.<br> <br>
-For a certain version use <code>pip install goome-cli==0.5.3</code>, or put the tag after an <code>@</code> to get it from git, like <code>pip install git+https://github.com/goome-ui/goome-cli@v0.5.3</code>.
+For a certain version use <code>pip install goome-cli==0.5.4</code>, or put the tag after an <code>@</code> to get it from git, like <code>pip install git+https://github.com/goome-ui/goome-cli@v0.5.4</code>.
 </p>
 </details>
 

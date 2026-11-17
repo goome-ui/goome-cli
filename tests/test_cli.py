@@ -142,6 +142,32 @@ class Cli(unittest.TestCase):
     def test_lua(self):
         self.lang("lua", "lua main.lua")
 
+    def lua_template(self, with_rockspec):
+        path = os.path.join(self.dir, "lua.tar.gz")
+        with tarfile.open(path, "w:gz") as tar:
+            add(tar, "tpl-main/main.lua", b"print('hi')\n")
+            if with_rockspec:
+                add(tar, "tpl-main/goome-0.5.3-1.rockspec", b"package = 'goome'\n")
+        return path
+
+    def lua_out(self, tar, name):
+        out = io.StringIO()
+        with redirect_stdout(out):
+            goome.main(["new", name, "--lang", "lua", "--dir", os.path.join(self.dir, name), "--from", tar])
+        return out.getvalue(), self.read(name, "README.md")
+
+    def test_lua_rockspec_named(self):
+        out, readme = self.lua_out(self.lua_template(True), "withspec")
+        self.assertIn("  luarocks install --local goome-0.5.3-1.rockspec\n", out)
+        self.assertIn("luarocks install --local goome-0.5.3-1.rockspec", readme)
+        self.assertNotIn("0.5.0", out)
+
+    def test_lua_no_rockspec(self):
+        out, readme = self.lua_out(self.lua_template(False), "nospec")
+        self.assertIn("  luarocks make --local\n", out)
+        self.assertNotIn(".rockspec", out)
+        self.assertNotIn(".rockspec", readme)
+
 
 STUB = """#!/usr/bin/env bash
 case "$1" in
