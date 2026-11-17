@@ -15,7 +15,7 @@ import time
 import urllib.error
 import urllib.request
 
-__version__ = "0.5.3"
+__version__ = "0.5.4"
 
 ORG = "goome-ui"
 PYPI_URL = "https://pypi.org/pypi/goome-cli/json"
@@ -58,8 +58,17 @@ def names(name):
     return dict(zip(TOKENS, (title, "-".join(lower), "_".join(lower), pascal, flat)))
 
 
-def next_steps(lang, folder, kebab):
+def rockspec_in(root):
+    if root and os.path.isdir(root):
+        found = sorted(f for f in os.listdir(root) if f.endswith(".rockspec"))
+        if found:
+            return found[-1]
+    return None
+
+
+def next_steps(lang, folder, kebab, root=None):
     cd = "cd " + (folder if " " not in folder else '"%s"' % folder)
+    spec = rockspec_in(root)
     steps = {
         "c": [cd, "cc -O2 -o %s main.c goome.c" % kebab, "./" + kebab, "",
               "or with cmake (windows too):", "cmake -S . -B build", "cmake --build build"],
@@ -72,7 +81,7 @@ def next_steps(lang, folder, kebab):
         "node": [cd, "npm install", "node main.js"],
         "go": [cd, "go run ."],
         "zig": [cd, "zig build run"],
-        "lua": [cd, "luarocks install --local goome-0.5.0-1.rockspec",
+        "lua": [cd, "luarocks install --local " + spec if spec else "luarocks make --local",
                 "eval \"$(luarocks path)\"   (on windows run luarocks path and do what it prints)", "lua main.lua"],
     }
     return steps[lang]
@@ -185,7 +194,7 @@ def write_readme(dest, lang, template, table):
     title = table["My Goome App"]
     lines = ["# " + title, "",
              "Made with [goome](https://goome-ui.github.io/docs/), from the %s %s template." % (lang, template), "",
-             "```sh"] + [s for s in next_steps(lang, ".", table["my-goome-app"])[1:] if s and not s.endswith(":")] + ["```", ""]
+             "```sh"] + [s for s in next_steps(lang, ".", table["my-goome-app"], dest)[1:] if s and not s.endswith(":")] + ["```", ""]
     with open(os.path.join(dest, "README.md"), "w") as f:
         f.write("\n".join(lines))
 
@@ -223,7 +232,7 @@ def cmd_new(a):
     print("made %s (%s, %s template, from %s)" % (folder, a.lang, a.template, got))
     print("")
     print("next:")
-    for s in next_steps(a.lang, folder, table["my-goome-app"]):
+    for s in next_steps(a.lang, folder, table["my-goome-app"], dest):
         print("  " + s if s else "")
     return 0
 
