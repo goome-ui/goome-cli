@@ -5,6 +5,7 @@ on:
     branches: ['**']
   pull_request:
   workflow_dispatch:
+  workflow_call:
 
 jobs:
   test:
@@ -39,6 +40,33 @@ jobs:
           cd "$RUNNER_TEMP"
           "$py" -m goome_cli --version
           "$py" -m goome_cli list
+
+  package:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: build and check
+        run: |
+          python -m pip install -q build twine
+          python -m build -o dist
+          twine check --strict dist/*
+          unzip -l dist/*.whl | grep -q goome_cli.py
+      - name: wheel in a clean venv
+        run: |
+          python -m venv "$RUNNER_TEMP/w"
+          "$RUNNER_TEMP/w/bin/pip" install -q dist/*.whl
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/w/bin/goome" --version
+          "$RUNNER_TEMP/w/bin/goome" list
+      - name: sdist in a clean venv
+        run: |
+          python -m venv "$RUNNER_TEMP/s"
+          "$RUNNER_TEMP/s/bin/pip" install -q dist/*.tar.gz
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/s/bin/goome" --version
 
   templates:
     needs: test

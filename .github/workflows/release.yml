@@ -22,3 +22,34 @@ jobs:
         run: |
           gh release view "$TAG" > /dev/null 2>&1 || gh release create "$TAG" --verify-tag --title "goome-cli ${TAG#v}" --notes "goome-cli ${TAG#v}"
           gh release upload "$TAG" goome.py --clobber
+
+  pypi:
+    needs: upload
+    if: vars.PYPI_PUBLISH == 'yes'
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/p/goome-cli
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: build and check
+        run: |
+          grep -q "^__version__ = \"${GITHUB_REF_NAME#v}\"" goome.py || { echo "goome.py isnt ${GITHUB_REF_NAME#v}"; exit 1; }
+          python -m pip install -q build twine
+          python -m build -o dist
+          twine check --strict dist/*
+          unzip -l dist/*.whl | grep -q goome_cli.py
+          ls -l dist
+      - name: wheel in a clean venv
+        run: |
+          python -m venv "$RUNNER_TEMP/w"
+          "$RUNNER_TEMP/w/bin/pip" install -q dist/*.whl
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/w/bin/goome" --version | grep -q "${GITHUB_REF_NAME#v}"
+          "$RUNNER_TEMP/w/bin/goome" list
+      - uses: pypa/gh-action-pypi-publish@release/v1

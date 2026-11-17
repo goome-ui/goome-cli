@@ -3,6 +3,7 @@ import argparse
 import functools
 import http.server
 import io
+import json
 import os
 import re
 import shutil
@@ -10,12 +11,16 @@ import subprocess
 import sys
 import tarfile
 import tempfile
+import time
 import urllib.error
 import urllib.request
 
-__version__ = "0.5.2"
+__version__ = "0.5.3"
 
 ORG = "goome-ui"
+PYPI_URL = "https://pypi.org/pypi/goome-cli/json"
+RELEASES_URL = "https://api.github.com/repos/goome-ui/goome-cli/releases/latest"
+ASSET_URL = "https://github.com/goome-ui/goome-cli/releases/latest/download/goome.py"
 LANGS = {
     "c": "C, one goome.h, builds with any C compiler",
     "csharp": "C#, .NET 8 or newer",
@@ -73,9 +78,9 @@ def next_steps(lang, folder, kebab):
     return steps[lang]
 
 
-def fetch(url):
+def fetch(url, timeout=60):
     req = urllib.request.Request(url, headers={"User-Agent": "goome-cli/" + __version__})
-    with urllib.request.urlopen(req, timeout=60) as r:
+    with urllib.request.urlopen(req, timeout=timeout) as r:
         return r.read()
 
 
@@ -302,7 +307,13 @@ def is_goome_tree(d):
 
 
 def cache_dir():
-    base = os.environ.get("XDG_CACHE_HOME") or os.path.join(os.path.expanduser("~"), ".cache")
+    home = os.path.expanduser("~")
+    base = os.environ.get("XDG_CACHE_HOME")
+    if not base and os.name == "nt":
+        base = os.environ.get("LOCALAPPDATA")
+    if not base and sys.platform == "darwin":
+        base = os.path.join(home, "Library", "Caches")
+    base = base or os.path.join(home, ".cache")
     return os.path.join(base, "goome")
 
 
@@ -423,6 +434,121 @@ def cmd_serve(a):
     return 0
 
 
+def parse_version(text):
+    parts = []
+    for piece in str(text).strip().lstrip("vV").split("."):
+        m = re.match(r"\d+", piece)
+        if not m:
+            break
+        parts.append(int(m.group()))
+    return tuple(parts)
+
+
+def is_newer(latest, current):
+    a, b = parse_version(latest), parse_version(current)
+    return bool(a) and a > b
+
+
+def installed_with_pip():
+    return os.path.basename(os.path.abspath(__file__)) == "goome_cli.py"
+
+
+def latest_version(timeout=60):
+    sources = [(PYPI_URL, lambda d: d["info"]["version"]), (RELEASES_URL, lambda d: d["tag_name"])]
+    if not installed_with_pip():
+        sources.reverse()
+    for url, pick in sources:
+        try:
+            found = str(pick(json.loads(fetch(url, timeout).decode("utf-8")))).lstrip("vV")
+        except (OSError, ValueError, KeyError, TypeError):
+            continue
+        if parse_version(found):
+            return found
+    return None
+
+
+def pip_upgrade_command():
+    if os.sep + "pipx" + os.sep in sys.prefix.replace("\\", os.sep) and shutil.which("pipx"):
+        return ["pipx", "upgrade", "goome-cli"]
+    return [sys.executable, "-m", "pip", "install", "-U", "goome-cli"]
+
+
+def replace_self(path, data):
+    folder = os.path.dirname(path)
+    if not os.access(folder, os.W_OK) or not os.access(path, os.W_OK):
+        raise SystemExit("goome: cant write to %s, so it wasnt updated. Run the update with the rights that file needs, or download goome.py again by hand." % path)
+    if hasattr(os, "geteuid") and os.stat(path).st_uid != os.geteuid():
+        raise SystemExit("goome: %s belongs to another user (a system install?), so it wasnt updated. Update it the way it was installed." % path)
+    shutil.copy2(path, path + ".bak")
+    fd, tmp = tempfile.mkstemp(dir=folder, prefix=".goome-update-")
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+        shutil.copymode(path, tmp)
+        os.replace(tmp, path)
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+
+
+def cmd_update(a):
+    latest = latest_version(15)
+    if not latest:
+        print("goome: couldnt reach PyPI or GitHub to look for a new version", file=sys.stderr)
+        return 1
+    if a.check:
+        print(latest)
+        return 0
+    if not is_newer(latest, __version__):
+        print("goome %s is the newest" % __version__)
+        return 0
+    print("goome %s -> %s" % (__version__, latest))
+    if installed_with_pip():
+        cmd = pip_upgrade_command()
+        print(" ".join(cmd))
+        return subprocess.call(cmd)
+    path = os.path.realpath(os.path.abspath(__file__))
+    try:
+        data = fetch(ASSET_URL, 60)
+    except OSError as e:
+        print("goome: couldnt download goome.py (%s)" % e, file=sys.stderr)
+        return 1
+    if ('__version__ = "%s"' % latest).encode() not in data:
+        print("goome: the downloaded goome.py isnt version %s, not replacing anything" % latest, file=sys.stderr)
+        return 1
+    try:
+        compile(data, "goome.py", "exec")
+    except (SyntaxError, ValueError):
+        print("goome: the downloaded goome.py is broken, not replacing anything", file=sys.stderr)
+        return 1
+    replace_self(path, data)
+    print("updated %s, the old one is next to it as goome.py.bak" % path)
+    return 0
+
+
+def update_note():
+    if os.environ.get("GOOME_NO_UPDATE_CHECK") or not sys.stdout.isatty():
+        return
+    try:
+        stamp = os.path.join(cache_dir(), "update-check")
+        try:
+            with open(stamp) as f:
+                last = float(f.read().strip())
+        except (OSError, ValueError):
+            last = 0
+        now = time.time()
+        if 0 <= now - last < 86400:
+            return
+        os.makedirs(cache_dir(), exist_ok=True)
+        with open(stamp, "w") as f:
+            f.write(str(now))
+        latest = latest_version(2)
+        if latest and is_newer(latest, __version__):
+            print("goome %s is out (you have %s), run goome update" % (latest, __version__), file=sys.stderr)
+    except Exception:
+        return
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(prog="goome", description="makes a new goome project from a template, builds apps for the web")
     p.add_argument("--version", action="version", version="goome " + __version__)
@@ -446,17 +572,17 @@ def main(argv=None):
     sv.add_argument("--port", type=int, default=8000)
     sv.add_argument("--bind", default="127.0.0.1")
     sub.add_parser("list", help="show the languages and templates")
+    u = sub.add_parser("update", help="update goome-cli to the newest version")
+    u.add_argument("--check", action="store_true", help="only print the newest version")
     a = p.parse_args(argv)
-    if a.cmd == "new":
-        return cmd_new(a)
-    if a.cmd == "build":
-        return cmd_build(a)
-    if a.cmd == "serve":
-        return cmd_serve(a)
-    if a.cmd == "list":
-        return cmd_list(a)
-    p.print_help()
-    return 1
+    cmds = {"new": cmd_new, "build": cmd_build, "serve": cmd_serve, "list": cmd_list, "update": cmd_update}
+    if a.cmd not in cmds:
+        p.print_help()
+        return 1
+    code = cmds[a.cmd](a)
+    if a.cmd in ("new", "build", "list"):
+        update_note()
+    return code
 
 
 if __name__ == "__main__":

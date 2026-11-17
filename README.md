@@ -44,12 +44,13 @@ python main.py
 <br>
 
 ```sh
-pip install git+https://github.com/goome-ui/goome-cli
+pipx install goome-cli
 goome --version
 ```
 
 <p align="center">
-goome-cli isnt on PyPI. <code>pip install goome</code> gets you <a href="https://github.com/goome-ui/python-goome">python-goome</a>, not this.<br> <br>
+Its on <a href="https://pypi.org/project/goome-cli/">PyPI</a> as <code>goome-cli</code>, and the command it gives you is <code>goome</code>. <code>pipx</code> keeps it away from your other Python stuff, <code>pip install goome-cli</code> works too.<br>
+Not the same as <code>pip install goome</code>, that one is <a href="https://github.com/goome-ui/python-goome">python-goome</a>, the library.<br> <br>
 Or skip installing and just download the file, it runs the same way:
 </p>
 
@@ -60,7 +61,7 @@ python goome.py new my-app --lang c
 
 <p align="center">
 On windows thats <code>irm https://raw.githubusercontent.com/goome-ui/goome-cli/main/goome.py -OutFile goome.py</code> in powershell, then <code>python goome.py new ...</code>.<br> <br>
-For a certain version put the tag after an <code>@</code>, like <code>pip install git+https://github.com/goome-ui/goome-cli@v0.5.2</code>.
+For a certain version use <code>pip install goome-cli==0.5.3</code>, or put the tag after an <code>@</code> to get it from git, like <code>pip install git+https://github.com/goome-ui/goome-cli@v0.5.3</code>.
 </p>
 </details>
 
@@ -72,6 +73,7 @@ For a certain version put the tag after an <code>@</code>, like <code>pip instal
 ```sh
 goome new <name> --lang c|csharp|python|java|godot|rust|node|go|zig|lua [--template app|overlay|mod-menu|hud]
 goome list
+goome update [--check]
 goome --version
 ```
 
@@ -88,7 +90,8 @@ The templates:<br> <br>
 <b>hud</b> - a little info panel in the corner, clicks go straight through it<br> <br>
 It downloads the template that matches this version of goome-cli, and the newest one on main if theres no tag for it yet.<br>
 The name can be anything with letters and numbers. <code>cool hud</code> turns into "Cool Hud" in titles, <code>cool-hud</code> for the binary, <code>CoolHud</code> for the C# project and <code>coolhud</code> for the Java package.<br>
-It wont touch a folder that already has stuff in it.
+It wont touch a folder that already has stuff in it.<br> <br>
+<b>goome update</b> updates goome-cli. If you installed it with pip or pipx it runs the right upgrade for that, if its the loose <code>goome.py</code> it downloads the newest one from the releases and swaps itself, keeping the old one as <code>goome.py.bak</code>. <code>--check</code> only prints the newest version. About once a day it says on stderr when a new version is out, <code>GOOME_NO_UPDATE_CHECK=1</code> turns that off.
 </p>
 </details>
 
