@@ -193,7 +193,7 @@ def rename(dest, table):
 def write_readme(dest, lang, template, table):
     title = table["My Goome App"]
     lines = ["# " + title, "",
-             "Made with [goome](https://goome-ui.github.io/docs/), from the %s %s template." % (lang, template), "",
+             "Made with [goome](https://goome.wtf/docs/), from the %s %s template." % (lang, template), "",
              "```sh"] + [s for s in next_steps(lang, ".", table["my-goome-app"], dest)[1:] if s and not s.endswith(":")] + ["```", ""]
     with open(os.path.join(dest, "README.md"), "w") as f:
         f.write("\n".join(lines))
