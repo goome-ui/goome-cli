@@ -9,8 +9,8 @@
 </p>
 
 <p align="center">
-  <img src="https://goome-ui.github.io/docs/assets/badges/python-38.svg" alt="Python 3.8+">
-  <img src="https://goome-ui.github.io/docs/assets/badges/one-file-goome-py.svg" alt="one file">
+  <img src="https://goome.wtf/badges/python-38.svg" alt="Python 3.8+">
+  <img src="https://goome.wtf/badges/one-file-goome-py.svg" alt="one file">
   <img src="https://img.shields.io/badge/license-GPL--3.0-1b1d22?style=flat-square" alt="GPL-3.0">
 </p>
 
@@ -21,13 +21,13 @@
 </p>
 
 <p align="center">
-  <a href="https://goome-ui.github.io/docs/">Docs</a> &nbsp;·&nbsp;
+  <a href="https://goome.wtf/docs/">Docs</a> &nbsp;·&nbsp;
   <a href="https://github.com/goome-ui/c-goome">goome</a> &nbsp;·&nbsp;
   <a href="https://github.com/goome-ui/examples">Examples</a>
 </p>
 
 <p align="center">
-  To see goome before you start, the <a href="https://goome-ui.github.io/docs/downloads/">ready made apps</a> are on the <a href="https://github.com/goome-ui/examples/releases/latest">examples release</a>.<br>
+  To see goome before you start, the <a href="https://goome.wtf/docs/downloads/">ready made apps</a> are on the <a href="https://github.com/goome-ui/examples/releases/latest">examples release</a>.<br>
   Questions go in <a href="https://github.com/goome-ui/c-goome/discussions">Discussions</a>, and the <a href="https://github.com/goome-ui/c-goome/labels/good%20first%20issue">good first issues</a> on c-goome are small ones if you want to help.
 </p>
 
