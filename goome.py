@@ -39,7 +39,7 @@ TEMPLATES = {
     "mod-menu": "a menu over the game that a hotkey opens and closes",
     "hud": "a little info panel in the corner, clicks go through it",
 }
-TEMPLATE_ONLY = ["variants", "tests", "CONTRIBUTING.md", ".github/workflows/pr-rules.yml"]
+TEMPLATE_ONLY = ["variants", "tests", "CONTRIBUTING.md", ".github/workflows/pr-rules.yml", ".github/update-goome.sh", ".github/workflows/update-goome.yml"]
 TOKENS = ("My Goome App", "my-goome-app", "my_goome_app", "MyGoomeApp", "mygoomeapp")
 
 

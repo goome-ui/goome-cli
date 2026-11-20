@@ -30,6 +30,8 @@ def fake_template(path):
         add(tar, "tpl-main/CONTRIBUTING.md", b"x")
         add(tar, "tpl-main/tests/check.gd", b"x")
         add(tar, "tpl-main/.github/workflows/pr-rules.yml", b"x")
+        add(tar, "tpl-main/.github/update-goome.sh", b"x", 0o755)
+        add(tar, "tpl-main/.github/workflows/update-goome.yml", b"x")
         add(tar, "tpl-main/.github/workflows/ci.yml", b"run: ./my-goome-app")
         add(tar, "tpl-main/../../escape.txt", b"nope")
         add(tar, "/abs.txt", b"nope")
@@ -78,7 +80,7 @@ class Cli(unittest.TestCase):
         self.assertIn("class CoolHud", self.read("cool-hud", "src", "coolhud", "Main.java"))
         self.assertIn("./cool-hud", self.read("cool-hud", ".github", "workflows", "ci.yml"))
         self.assertIn("# Cool Hud", self.read("cool-hud", "README.md"))
-        for gone in ("variants", "tests", "CONTRIBUTING.md", ".github/workflows/pr-rules.yml", "link", "abs.txt"):
+        for gone in ("variants", "tests", "CONTRIBUTING.md", ".github/workflows/pr-rules.yml", ".github/update-goome.sh", ".github/workflows/update-goome.yml", "link", "abs.txt"):
             self.assertFalse(os.path.exists(os.path.join(dest, gone)), gone)
         self.assertFalse(os.path.exists(os.path.join(self.dir, "escape.txt")))
         if os.name != "nt":
