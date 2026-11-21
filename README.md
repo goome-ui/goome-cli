@@ -61,7 +61,7 @@ python goome.py new my-app --lang c
 
 <p align="center">
 On windows thats <code>irm https://raw.githubusercontent.com/goome-ui/goome-cli/main/goome.py -OutFile goome.py</code> in powershell, then <code>python goome.py new ...</code>.<br> <br>
-For a certain version use <code>pip install goome-cli==0.5.4</code>, or put the tag after an <code>@</code> to get it from git, like <code>pip install git+https://github.com/goome-ui/goome-cli@v0.5.4</code>.
+For a certain version use <code>pip install goome-cli==0.5.5</code>, or put the tag after an <code>@</code> to get it from git, like <code>pip install git+https://github.com/goome-ui/goome-cli@v0.5.5</code>.
 </p>
 </details>
 
@@ -106,7 +106,7 @@ goome serve [web] [--port 8000] [--bind 127.0.0.1]
 ```
 
 <p align="center">
-Compiles a goome C app to webassembly and puts a page around it. You get <code>index.html</code>, <code>goome.js</code> and <code>goome.wasm</code> in the out folder, drop it on any static host.<br> <br>
+Compiles a goome C app to webassembly (C apps only for now, other languages get a message saying so) and puts a page around it. You get <code>index.html</code>, <code>goome.js</code> and <code>goome.wasm</code> in the out folder, drop it on any static host.<br> <br>
 <b>file.c</b> - your app, <code>main.c</code> or <code>src/main.c</code> if you leave it out<br>
 <b>--out</b> - where it goes, <code>web</code> if you leave it out<br>
 <b>--goome</b> - a c-goome checkout to build with, otherwise it looks next to your app and then downloads one<br>
