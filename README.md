@@ -73,6 +73,7 @@ For a certain version use <code>pip install goome-cli==0.5.6</code>, or put the 
 ```sh
 goome new <name> --lang c|csharp|python|java|godot|rust|node|go|zig|lua [--template app|overlay|mod-menu|hud]
 goome list
+goome upgrade [--check] [--json] [--dir DIR]
 goome update [--check]
 goome --version
 ```
@@ -91,7 +92,9 @@ The templates:<br> <br>
 It downloads the template that matches this version of goome-cli, and the newest one on main if theres no tag for it yet.<br>
 The name can be anything with letters and numbers. <code>cool hud</code> turns into "Cool Hud" in titles, <code>cool-hud</code> for the binary, <code>CoolHud</code> for the C# project and <code>coolhud</code> for the Java package.<br>
 It wont touch a folder that already has stuff in it.<br> <br>
-<b>goome update</b> updates goome-cli. If you installed it with pip or pipx it runs the right upgrade for that, if its the loose <code>goome.py</code> it downloads the newest one from the releases and swaps itself, keeping the old one as <code>goome.py.bak</code>. <code>--check</code> only prints the newest version. About once a day it says on stderr when a new version is out, <code>GOOME_NO_UPDATE_CHECK=1</code> turns that off.
+<b>goome upgrade</b> moves your project to the newest goome. It looks up from the folder you are in (or <b>--dir</b>) for the project, works out the language from the pin that <code>goome new</code> wrote (the csproj, requirements.txt, gradle.properties, Cargo.toml, package.json, go.mod, build.zig.zon, rockspec, get-goome scripts or goome.h), asks the registry for the newest stable version and rewrites the pin, in <code>variants/</code> too. It never goes down, ignores prereleases and leaves a pin it doesnt understand alone. After it runs it tells you what to run next, like <code>dotnet restore</code> or <code>npm install</code>. Zig needs <code>zig</code> on your PATH to work out the new hash, Lua renames the rockspec, C downloads the new <code>goome.h</code>.<br>
+<b>--check</b> changes nothing, <b>--json</b> prints one object (<code>ok</code>, <code>lang</code>, <code>root</code>, <code>current</code>, <code>latest</code>, <code>update</code>, <code>files</code>, <code>next</code>, and <code>applied</code> once its done) for editors to read. Exit codes: 0 done or already newest, 10 a newer goome exists (with --check), 2 not a goome project, 3 cant update (zig missing), 4 registry unreachable.<br> <br>
+<b>goome update</b> updates goome-cli itself. If you installed it with pip or pipx it runs the right upgrade for that, if its the loose <code>goome.py</code> it downloads the newest one from the releases and swaps itself, keeping the old one as <code>goome.py.bak</code>. <code>--check</code> only prints the newest version. About once a day it says on stderr when a new version is out, <code>GOOME_NO_UPDATE_CHECK=1</code> turns that off.
 </p>
 </details>
 

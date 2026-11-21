@@ -569,6 +569,366 @@ def cmd_update(a):
     return 0
 
 
+STABLE = re.compile(r"^\d+\.\d+\.\d+$")
+SCAN_SKIP = {"node_modules", "target", "build", "bin", "obj", "lua_modules", "zig-out", "vendor", "dist", "out"}
+MAX_PIN_FILE = 8 * 1024 * 1024
+
+
+class UpgradeError(Exception):
+    def __init__(self, code, message):
+        super().__init__(message)
+        self.code = code
+        self.message = message
+
+
+def is_stable(version):
+    return bool(STABLE.match(version))
+
+
+def highest_stable(versions, where):
+    found = [v for v in versions if is_stable(v)]
+    if not found:
+        raise UpgradeError(4, "%s has no stable goome version" % where)
+    return max(found, key=parse_version)
+
+
+def get_text(url):
+    try:
+        return fetch(url, 30).decode("utf-8")
+    except (OSError, ValueError) as e:
+        raise UpgradeError(4, "couldnt reach %s (%s)" % (url, getattr(e, "reason", None) or e))
+
+
+def get_json(url):
+    try:
+        return json.loads(get_text(url))
+    except ValueError:
+        raise UpgradeError(4, "%s didnt send json" % url)
+
+
+def latest_pypi():
+    releases = get_json("https://pypi.org/pypi/goome/json").get("releases", {})
+    live = [v for v, files in releases.items() if any(not f.get("yanked") for f in files)]
+    return highest_stable(live, "pypi")
+
+
+def latest_nuget():
+    return highest_stable(get_json("https://api.nuget.org/v3-flatcontainer/goomesharp/index.json").get("versions", []), "nuget")
+
+
+def latest_maven():
+    xml = get_text("https://repo1.maven.org/maven2/io/github/goome-ui/goome/maven-metadata.xml")
+    return highest_stable(re.findall(r"<version>([^<]+)</version>", xml), "maven central")
+
+
+def latest_crate():
+    found = get_json("https://crates.io/api/v1/crates/goome").get("crate", {}).get("max_stable_version")
+    return highest_stable([str(found or "")], "crates.io")
+
+
+def latest_go():
+    listing = get_text("https://proxy.golang.org/github.com/goome-ui/go-goome/@v/list")
+    return highest_stable([line.strip().lstrip("v") for line in listing.splitlines()], "the go proxy")
+
+
+def latest_release(repo):
+    def pick():
+        tag = get_json("https://api.github.com/repos/%s/%s/releases/latest" % (ORG, repo)).get("tag_name", "")
+        return highest_stable([str(tag).lstrip("vV")], "github %s" % repo)
+    return pick
+
+
+def swap_version(pattern, text, new):
+    def one(m):
+        start = m.start("v") - m.start()
+        end = m.end("v") - m.start()
+        return m.group(0)[:start] + new + m.group(0)[end:]
+    return re.sub(pattern, one, text, flags=re.M)
+
+
+def swap_all(patterns):
+    def rewrite(text, new):
+        for pattern in patterns:
+            text = swap_version(pattern, text, new)
+        return text
+    return rewrite
+
+
+class Pin:
+    def __init__(self, path, version, text):
+        self.path = path
+        self.version = version
+        self.text = text
+
+
+class Kind:
+    def __init__(self, name, wanted, patterns, nxt, latest):
+        self.name = name
+        self.wanted = wanted
+        self.patterns = patterns
+        self.next = nxt
+        self.latest = latest
+
+    def read(self, path):
+        try:
+            if os.path.islink(path) or os.path.getsize(path) > MAX_PIN_FILE:
+                return None
+            with open(path, "rb") as f:
+                text = f.read().decode("utf-8")
+        except (OSError, UnicodeDecodeError):
+            return None
+        for pattern in self.patterns:
+            m = re.search(pattern, text, re.M)
+            if m:
+                return Pin(path, m.group("v"), text)
+        return None
+
+    def changes(self, root, pin, new, dry):
+        return [(pin.path, None, None if dry else swap_all(self.patterns)(pin.text, new))]
+
+
+class NodeKind(Kind):
+    def changes(self, root, pin, new, dry):
+        text = None
+        if not dry:
+            text = re.sub(r'(node-goome/releases/download/v)[^/"]+(/goome-)[^"/]+?(\.tgz)', lambda m: m.group(1) + new + m.group(2) + new + m.group(3), pin.text)
+        return [(pin.path, None, text)]
+
+
+def zig_hash(url):
+    zig = shutil.which("zig")
+    if not zig:
+        raise UpgradeError(3, "zig isnt installed, and the new hash in build.zig.zon comes from zig fetch. install zig 0.15.2 (https://ziglang.org/download/) and run goome upgrade again, build.zig.zon was left alone")
+    try:
+        r = subprocess.run([zig, "fetch", url], capture_output=True, text=True, timeout=300)
+    except (OSError, subprocess.SubprocessError) as e:
+        raise UpgradeError(3, "zig fetch didnt run (%s), build.zig.zon was left alone" % e)
+    lines = r.stdout.strip().splitlines()
+    if r.returncode or not lines:
+        raise UpgradeError(3, "zig fetch failed: %s" % (r.stderr.strip() or "no hash came back"))
+    return lines[-1].strip()
+
+
+class ZigKind(Kind):
+    def changes(self, root, pin, new, dry):
+        if dry:
+            return [(pin.path, None, None)]
+        url = "https://github.com/goome-ui/zig-goome/archive/refs/tags/v%s.tar.gz" % new
+        digest = zig_hash(url)
+        text = swap_all(self.patterns)(pin.text, new)
+        text, count = re.subn(r'(\.goome\s*=\s*\.\{[^}]*?\.hash\s*=\s*")[^"]*(")', lambda m: m.group(1) + digest + m.group(2), text, count=1, flags=re.S)
+        if not count:
+            raise UpgradeError(3, "found the goome url in build.zig.zon but not its .hash, left it alone")
+        return [(pin.path, None, text)]
+
+
+class LuaKind(Kind):
+    def read(self, path):
+        m = re.match(r"^goome-(\d[^-]*)-\d+\.rockspec$", os.path.basename(path))
+        if not m or os.path.islink(path):
+            return None
+        try:
+            with open(path, "rb") as f:
+                return Pin(path, m.group(1), f.read().decode("utf-8"))
+        except (OSError, UnicodeDecodeError):
+            return None
+
+    def changes(self, root, pin, new, dry):
+        folder = os.path.dirname(pin.path)
+        old_name = os.path.basename(pin.path)
+        new_name = "goome-%s-1.rockspec" % new
+        text = pin.text
+        if not dry:
+            text = re.sub(r'^(version\s*=\s*")[^"]*(")', lambda m: m.group(1) + new + "-1" + m.group(2), text, flags=re.M)
+            text = re.sub(r'^(\s*tag\s*=\s*")[^"]*(")', lambda m: m.group(1) + "v" + new + m.group(2), text, flags=re.M)
+        done = [(pin.path, os.path.join(folder, new_name), None if dry else text)]
+        readme = os.path.join(folder, "README.md")
+        if os.path.isfile(readme) and not os.path.islink(readme):
+            try:
+                with open(readme, "rb") as f:
+                    raw = f.read().decode("utf-8")
+            except (OSError, UnicodeDecodeError):
+                raw = ""
+            if old_name in raw:
+                done.append((readme, None, None if dry else raw.replace(old_name, new_name)))
+        return done
+
+
+class CKind(Kind):
+    def changes(self, root, pin, new, dry):
+        if dry:
+            return [(pin.path, None, None)]
+        url = "https://github.com/goome-ui/c-goome/releases/download/v%s/goome.h" % new
+        try:
+            data = fetch(url, 120)
+        except urllib.error.HTTPError as e:
+            raise UpgradeError(3 if e.code == 404 else 4, "couldnt download %s (%s)" % (url, e))
+        except OSError as e:
+            raise UpgradeError(4, "couldnt download %s (%s)" % (url, e))
+        text = data.decode("utf-8", "replace")
+        if '#define GOOME_VERSION "%s"' % new not in text or "GOOME_IMPLEMENTATION" not in text:
+            raise UpgradeError(3, "the goome.h that came from v%s isnt the right file, left yours alone" % new)
+        return [(pin.path, None, text)]
+
+
+def names_in(*files):
+    return lambda name: name in files
+
+
+KINDS = [
+    Kind("csharp", lambda n: n.endswith(".csproj"), [
+        r'<PackageReference\b[^>]*?\bInclude="GoomeSharp"[^>]*?\bVersion="(?P<v>[^"]+)"',
+        r'<PackageReference\b[^>]*?\bVersion="(?P<v>[^"]+)"[^>]*?\bInclude="GoomeSharp"',
+        r'<PackageReference\b[^>]*?\bInclude="GoomeSharp"[^>]*>\s*<Version>(?P<v>[^<]+)</Version>',
+    ], "dotnet restore", latest_nuget),
+    Kind("python", names_in("requirements.txt", "pyproject.toml"), [
+        r'^[ \t]*goome(?:\[[^\]]*\])?[ \t]*(?:===|==|~=|>=|<=)[ \t]*(?P<v>\d[^\s,;#"\']*)',
+        r'["\']goome(?:\[[^\]]*\])?\s*(?:===|==|~=|>=|<=)\s*(?P<v>\d[^\s,;#"\']*)',
+    ], "pip install -r requirements.txt", latest_pypi),
+    Kind("java", names_in("gradle.properties", "build.gradle", "build.gradle.kts"), [
+        r'^[ \t]*goome_version[ \t]*=[ \t]*(?P<v>[^\s#]+)',
+        r'io\.github\.goome-ui:goome:(?P<v>\d[^"\'\s)]*)',
+    ], "./gradlew build --refresh-dependencies", latest_maven),
+    Kind("rust", names_in("Cargo.toml"), [
+        r'^[ \t]*goome[ \t]*=[ \t]*"[\^=~]?(?P<v>[^"]+)"',
+        r'^[ \t]*goome[ \t]*=[ \t]*\{[^}\n]*?\bversion[ \t]*=[ \t]*"[\^=~]?(?P<v>[^"]+)"',
+        r'^\[(?:[\w.-]+\.)?dependencies\.goome\][^\[]*?^version[ \t]*=[ \t]*"[\^=~]?(?P<v>[^"]+)"',
+    ], "cargo update -p goome", latest_crate),
+    NodeKind("node", names_in("package.json"), [
+        r'node-goome/releases/download/v(?P<v>[^/"]+)/goome-',
+    ], "npm install", latest_release("node-goome")),
+    Kind("go", names_in("go.mod"), [
+        r'github\.com/goome-ui/go-goome[ \t]+v(?P<v>[^\s/]+)',
+    ], "go mod tidy", latest_go),
+    ZigKind("zig", names_in("build.zig.zon"), [
+        r'zig-goome/archive/refs/tags/v(?P<v>[^"/]+?)\.tar\.gz',
+    ], "zig build", latest_release("zig-goome")),
+    LuaKind("lua", lambda n: n.endswith(".rockspec"), [], "luarocks make", latest_release("lua-goome")),
+    Kind("godot", names_in("get-goome.sh", "get-goome.ps1"), [
+        r'GOOME_VERSION:-(?P<v>[^}\s]+)\}',
+        r'else \{ "(?P<v>[^"]+)" \}',
+    ], "run get-goome.sh", latest_release("godot-goome")),
+    CKind("c", names_in("goome.h"), [
+        r'^#define GOOME_VERSION "(?P<v>[^"]+)"',
+    ], None, latest_release("c-goome")),
+]
+
+
+def find_project(start):
+    if not os.path.isdir(start):
+        raise UpgradeError(2, "%s isnt a folder" % start)
+    folder = start
+    while True:
+        try:
+            entries = sorted(os.listdir(folder))
+        except OSError:
+            entries = []
+        for kind in KINDS:
+            for name in entries:
+                path = os.path.join(folder, name)
+                if kind.wanted(name) and os.path.isfile(path) and kind.read(path):
+                    return kind, folder
+        up = os.path.dirname(folder)
+        if up == folder:
+            raise UpgradeError(2, "not a goome project, found no goome pin in %s or the folders above it" % start)
+        folder = up
+
+
+def collect_pins(kind, root):
+    pins = []
+    for top, dirs, files in os.walk(root):
+        dirs[:] = sorted(d for d in dirs if d not in SCAN_SKIP and not d.startswith("."))
+        for name in sorted(files):
+            if kind.wanted(name):
+                pin = kind.read(os.path.join(top, name))
+                if pin:
+                    pins.append(pin)
+    return pins
+
+
+def inside(root, path):
+    base = os.path.realpath(root)
+    return os.path.realpath(path).startswith(base + os.sep)
+
+
+def write_change(root, path, new_path, text):
+    target = new_path or path
+    if not inside(root, path) or not inside(root, target):
+        raise UpgradeError(3, "%s is outside the project, not touching it" % target)
+    folder = os.path.dirname(target)
+    fd, tmp = tempfile.mkstemp(dir=folder, prefix=".goome-upgrade-")
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(text.encode("utf-8"))
+        if os.path.exists(path):
+            shutil.copymode(path, tmp)
+        os.replace(tmp, target)
+    finally:
+        if os.path.exists(tmp):
+            os.remove(tmp)
+    if new_path and os.path.abspath(new_path) != os.path.abspath(path) and os.path.exists(path):
+        os.remove(path)
+
+
+def run_upgrade(a):
+    start = os.path.abspath(a.dir or ".")
+    kind, root = find_project(start)
+    pins = collect_pins(kind, root)
+    latest = kind.latest()
+    stables = [p for p in pins if is_stable(p.version)]
+    behind = [p for p in stables if is_newer(latest, p.version)]
+    current = min(stables, key=lambda p: parse_version(p.version)).version if stables else pins[0].version
+    info = {"ok": True, "lang": kind.name, "root": root, "current": current, "latest": latest, "update": bool(behind), "files": [], "next": kind.next}
+    if not behind:
+        if not stables:
+            info["note"] = "the pin %s isnt a stable version, left alone" % current
+        return info, 0
+    plan = []
+    for pin in behind:
+        plan.extend(kind.changes(root, pin, latest, True))
+    for path, new_path, _ in plan:
+        for p in (path, new_path):
+            rel = os.path.relpath(p, root).replace(os.sep, "/") if p else None
+            if rel and rel not in info["files"]:
+                info["files"].append(rel)
+    if a.check:
+        return info, 10
+    work = []
+    for pin in behind:
+        work.extend(kind.changes(root, pin, latest, False))
+    for path, new_path, text in work:
+        write_change(root, path, new_path, text)
+    info["applied"] = True
+    info["version"] = latest
+    return info, 0
+
+
+def cmd_upgrade(a):
+    try:
+        info, code = run_upgrade(a)
+    except UpgradeError as e:
+        if a.json:
+            print(json.dumps({"ok": False, "error": e.message}))
+        else:
+            print("goome: " + e.message, file=sys.stderr)
+        return e.code
+    if a.json:
+        print(json.dumps(info))
+        return code
+    names = ", ".join(info["files"])
+    if info.get("note"):
+        print("goome: %s project, %s" % (info["lang"], info["note"]))
+    elif not info["update"]:
+        print("goome: %s project, goome %s is the newest" % (info["lang"], info["current"]))
+    elif a.check:
+        print("goome: %s project, goome %s -> %s is out (%s), run goome upgrade" % (info["lang"], info["current"], info["latest"], names))
+    else:
+        print("goome: %s project, goome %s -> %s in %s" % (info["lang"], info["current"], info["latest"], names))
+        if info["next"]:
+            print("next: " + info["next"])
+    return code
+
+
 def update_note():
     if os.environ.get("GOOME_NO_UPDATE_CHECK") or not sys.stdout.isatty():
         return
@@ -593,7 +953,7 @@ def update_note():
 
 
 def main(argv=None):
-    p = argparse.ArgumentParser(prog="goome", description="makes a new goome project from a template, builds apps for the web")
+    p = argparse.ArgumentParser(prog="goome", description="makes a new goome project from a template, builds apps for the web, moves a project to the newest goome")
     p.add_argument("--version", action="version", version="goome " + __version__)
     sub = p.add_subparsers(dest="cmd")
     n = sub.add_parser("new", help="make a new project")
@@ -615,10 +975,14 @@ def main(argv=None):
     sv.add_argument("--port", type=int, default=8000)
     sv.add_argument("--bind", default="127.0.0.1")
     sub.add_parser("list", help="show the languages and templates")
-    u = sub.add_parser("update", help="update goome-cli to the newest version")
+    u = sub.add_parser("update", help="update goome-cli itself to the newest version")
     u.add_argument("--check", action="store_true", help="only print the newest version")
+    g = sub.add_parser("upgrade", help="update the goome version your project uses")
+    g.add_argument("--check", action="store_true", help="only look, change nothing, exit 10 if theres a newer goome")
+    g.add_argument("--json", action="store_true", help="print the result as one json object")
+    g.add_argument("--dir", help="a folder in the project, the current one by default")
     a = p.parse_args(argv)
-    cmds = {"new": cmd_new, "build": cmd_build, "serve": cmd_serve, "list": cmd_list, "update": cmd_update}
+    cmds = {"new": cmd_new, "build": cmd_build, "serve": cmd_serve, "list": cmd_list, "update": cmd_update, "upgrade": cmd_upgrade}
     if a.cmd not in cmds:
         p.print_help()
         return 1
