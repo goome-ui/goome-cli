@@ -15,7 +15,7 @@ import time
 import urllib.error
 import urllib.request
 
-__version__ = "0.5.6"
+__version__ = "0.5.7"
 
 ORG = "goome-ui"
 PYPI_URL = "https://pypi.org/pypi/goome-cli/json"
