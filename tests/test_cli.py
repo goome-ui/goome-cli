@@ -260,6 +260,40 @@ class Web(unittest.TestCase):
             self.build("nope.c", "--goome", self.tree)
         self.assertIn("no such file", str(e.exception))
 
+    def test_other_languages_by_file(self):
+        for name, lang in (("Program.cs", "C#"), ("app.py", "Python"), ("App.java", "Java"), ("App.kt", "Kotlin"), ("main.rs", "Rust"), ("main.go", "Go"), ("main.zig", "Zig"), ("main.lua", "Lua"), ("app.js", "JavaScript"), ("app.ts", "TypeScript"), ("main.gd", "GDScript")):
+            with open(os.path.join(self.proj, name), "w") as f:
+                f.write("x")
+            with self.assertRaises(SystemExit) as e:
+                self.build(name, "--goome", self.tree)
+            self.assertIn("only works for C apps", str(e.exception))
+            self.assertIn(lang, str(e.exception))
+            self.assertIn("goome.wtf/builder", str(e.exception))
+        self.assertFalse(os.path.exists(os.path.join(self.proj, "web")))
+
+    def test_other_languages_by_project(self):
+        os.remove(os.path.join(self.proj, "main.c"))
+        for name, lang in (("App.csproj", "C#"), ("pyproject.toml", "Python"), ("requirements.txt", "Python"), ("build.gradle", "Java"), ("Cargo.toml", "Rust"), ("go.mod", "Go"), ("build.zig", "Zig"), ("app-1.rockspec", "Lua"), ("package.json", "JavaScript"), ("project.godot", "Godot")):
+            path = os.path.join(self.proj, name)
+            with open(path, "w") as f:
+                f.write("x")
+            with self.assertRaises(SystemExit) as e:
+                self.build("--goome", self.tree)
+            self.assertIn(lang, str(e.exception))
+            os.remove(path)
+
+    def test_c_app_in_a_mixed_project_still_builds(self):
+        with open(os.path.join(self.proj, "package.json"), "w") as f:
+            f.write("{}")
+        rc, _ = self.build("--goome", self.tree)
+        self.assertEqual(rc, 0)
+
+    def test_c_file_with_odd_extension_still_builds(self):
+        with open(os.path.join(self.proj, "weird.cc"), "w") as f:
+            f.write("x")
+        rc, _ = self.build("weird.cc", "--goome", self.tree)
+        self.assertEqual(rc, 0)
+
     def test_not_an_app_is_explained(self):
         with open(os.path.join(self.proj, "refuse.c"), "w") as f:
             f.write("x")

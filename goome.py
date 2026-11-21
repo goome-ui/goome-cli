@@ -374,6 +374,37 @@ def find_source(app, given, ref):
     raise SystemExit("goome: couldnt find c-goome %s, use --goome <checkout of c-goome>" % (ref or "v" + __version__))
 
 
+LANG_EXT = {".cs": "C#", ".py": "Python", ".java": "Java", ".kt": "Kotlin", ".rs": "Rust", ".go": "Go", ".zig": "Zig", ".lua": "Lua", ".js": "JavaScript", ".mjs": "JavaScript", ".ts": "TypeScript", ".gd": "GDScript"}
+LANG_FILES = (
+    ("project.godot", "Godot"), ("Cargo.toml", "Rust"), ("go.mod", "Go"), ("build.zig", "Zig"),
+    ("pyproject.toml", "Python"), ("requirements.txt", "Python"), ("build.gradle", "Java"),
+    ("build.gradle.kts", "Kotlin"), ("pom.xml", "Java"), ("package.json", "JavaScript"),
+)
+WEB_HINT = "try it live at https://goome.wtf/builder/ or see https://goome.wtf/docs/browser/"
+
+
+def not_c(lang):
+    return SystemExit(
+        "goome: building for the web only works for C apps right now, this looks like a %s project. "
+        "the web build compiles C, so the same app needs to be written in C to go in the browser. %s" % (lang, WEB_HINT))
+
+
+def other_language(path):
+    if path:
+        return LANG_EXT.get(os.path.splitext(path)[1].lower())
+    try:
+        names = os.listdir(".")
+    except OSError:
+        return None
+    for n in names:
+        if n.endswith((".csproj", ".sln", ".rockspec")):
+            return "C#" if not n.endswith(".rockspec") else "Lua"
+    for f, lang in LANG_FILES:
+        if f in names:
+            return lang
+    return None
+
+
 def find_app(path):
     if path:
         if not os.path.isfile(path):
@@ -388,6 +419,9 @@ def find_app(path):
 def cmd_build(a):
     if not a.web:
         raise SystemExit("goome: build needs a target, only --web so far")
+    lang = other_language(a.file)
+    if lang and (a.file or not any(os.path.isfile(c) for c in ("main.c", os.path.join("src", "main.c"), "app.c", os.path.join("src", "app.c")))):
+        raise not_c(lang)
     app = find_app(a.file)
     clang, ld = find_tools()
     src = find_source(app, a.goome, a.ref)
