@@ -257,6 +257,11 @@ class Upgrade(unittest.TestCase):
         self.assertEqual(rc, 3)
         self.assertEqual(self.read(root, "goome.h"), PROJECTS["c"]["goome.h"])
 
+    def test_version_with_a_newline_isnt_stable(self):
+        self.assertTrue(goome.is_stable("0.5.7"))
+        self.assertFalse(goome.is_stable("0.5.7\n"))
+        self.assertEqual(goome.highest_stable(["0.5.7", "9.9.9\n"], "x"), "0.5.7")
+
     def test_never_downgrades(self):
         root = self.project("python")
         with open(os.path.join(root, "requirements.txt"), "w") as f:

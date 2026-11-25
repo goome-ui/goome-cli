@@ -588,7 +588,7 @@ class UpgradeError(Exception):
 
 
 def is_stable(version):
-    return bool(STABLE.match(version))
+    return bool(STABLE.fullmatch(version))
 
 
 def highest_stable(versions, where):
