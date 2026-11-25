@@ -315,6 +315,12 @@ def is_goome_tree(d):
     return os.path.isfile(os.path.join(d, "wasm", "web-build.sh")) and os.path.isfile(os.path.join(d, "src", "goome.c"))
 
 
+def is_mine(d):
+    if not hasattr(os, "geteuid"):
+        return True
+    return os.stat(os.path.join(d, "wasm", "web-build.sh")).st_uid in (0, os.geteuid())
+
+
 def cache_dir():
     home = os.path.expanduser("~")
     base = os.environ.get("XDG_CACHE_HOME")
@@ -341,7 +347,7 @@ def find_source(app, given, ref):
         d = start
         while True:
             for cand in (d, os.path.join(d, "c-goome"), os.path.join(d, "goome"), os.path.join(d, "vendor", "c-goome")):
-                if is_goome_tree(cand):
+                if is_goome_tree(cand) and is_mine(cand):
                     return cand
             up = os.path.dirname(d)
             if up == d:

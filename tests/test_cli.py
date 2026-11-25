@@ -249,6 +249,19 @@ class Web(unittest.TestCase):
         rc, _ = self.build()
         self.assertEqual(rc, 0)
 
+    @unittest.skipIf(not hasattr(os, "geteuid") or os.geteuid() == 0, "needs a normal user")
+    def test_skips_a_checkout_from_another_user(self):
+        os.chdir(self.dir)
+        shutil.move(self.proj, os.path.join(self.tree, "myapp"))
+        os.chdir(os.path.join(self.tree, "myapp"))
+        def offline(url, timeout=60):
+            raise urllib.error.URLError("offline")
+        with mock.patch.object(goome.os, "geteuid", lambda: os.stat(self.tree).st_uid + 1), mock.patch.object(goome, "fetch", offline):
+            with self.assertRaises(SystemExit) as e:
+                self.build()
+        self.assertIn("couldnt reach github", str(e.exception))
+        self.assertFalse(os.path.exists(os.path.join(self.tree, "myapp", "web")))
+
     def test_which_file(self):
         os.remove(os.path.join(self.proj, "main.c"))
         with self.assertRaises(SystemExit) as e:
