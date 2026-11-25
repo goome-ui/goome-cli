@@ -130,6 +130,21 @@ class Upgrade(unittest.TestCase):
         self.run_cli("--dir", root)
         self.assertIn('Include="GoomeSharp" Version="0.5.7"', self.read(root, "App.csproj"))
 
+    def test_csharp_central_packages(self):
+        app = os.path.join(self.dir, "App")
+        os.makedirs(app)
+        with open(os.path.join(app, "App.csproj"), "w") as f:
+            f.write('<Project>\n  <ItemGroup>\n    <PackageReference Include="GoomeSharp" />\n  </ItemGroup>\n</Project>\n')
+        with open(os.path.join(self.dir, "Directory.Packages.props"), "w") as f:
+            f.write('<Project>\n  <ItemGroup>\n    <PackageVersion Include="Other" Version="0.5.5" />\n    <PackageVersion Include="GoomeSharp" Version="0.5.5" />\n  </ItemGroup>\n</Project>\n')
+        rc, out, _ = self.run_cli("--json", "--dir", app)
+        info = json.loads(out)
+        self.assertEqual(rc, 0)
+        self.assertEqual((info["lang"], info["root"], info["files"]), ("csharp", self.dir, ["Directory.Packages.props"]))
+        props = self.read(self.dir, "Directory.Packages.props")
+        self.assertIn('Include="GoomeSharp" Version="0.5.7"', props)
+        self.assertIn('Include="Other" Version="0.5.5"', props)
+
     def test_python_keeps_operator(self):
         root = self.project("python")
         with open(os.path.join(root, "requirements.txt"), "w") as f:

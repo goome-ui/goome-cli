@@ -776,10 +776,10 @@ def names_in(*files):
 
 
 KINDS = [
-    Kind("csharp", lambda n: n.endswith(".csproj"), [
-        r'<PackageReference\b[^>]*?\bInclude="GoomeSharp"[^>]*?\bVersion="(?P<v>[^"]+)"',
-        r'<PackageReference\b[^>]*?\bVersion="(?P<v>[^"]+)"[^>]*?\bInclude="GoomeSharp"',
-        r'<PackageReference\b[^>]*?\bInclude="GoomeSharp"[^>]*>\s*<Version>(?P<v>[^<]+)</Version>',
+    Kind("csharp", lambda n: n.endswith(".csproj") or n == "Directory.Packages.props", [
+        r'<Package(?:Reference|Version)\b[^>]*?\bInclude="GoomeSharp"[^>]*?\bVersion="(?P<v>[^"]+)"',
+        r'<Package(?:Reference|Version)\b[^>]*?\bVersion="(?P<v>[^"]+)"[^>]*?\bInclude="GoomeSharp"',
+        r'<Package(?:Reference|Version)\b[^>]*?\bInclude="GoomeSharp"[^>]*>\s*<Version>(?P<v>[^<]+)</Version>',
     ], "dotnet restore", latest_nuget),
     Kind("python", names_in("requirements.txt", "pyproject.toml"), [
         r'^[ \t]*goome(?:\[[^\]]*\])?[ \t]*(?:===|==|~=|>=|<=)[ \t]*(?P<v>\d[^\s,;#"\']*)',
